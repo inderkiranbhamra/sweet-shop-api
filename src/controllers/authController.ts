@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library';
 import nodemailer from 'nodemailer';
+import crypto from 'crypto'; // Built-in Node module
 import User from '../models/User';
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -53,8 +54,6 @@ export const register = async (req: Request, res: Response) => {
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
 
     // Create user but save OTP (we will verify later)
-    // NOTE: In a real app, you might verify OTP *before* creating the user document.
-    // Here, we create it but you could add an 'isVerified' flag if you wanted strictness.
     await User.create({ 
       email, 
       password: hashedPassword, 
@@ -79,7 +78,7 @@ export const register = async (req: Request, res: Response) => {
   }
 };
 
-// 2. VERIFY OTP (New)
+// 2. VERIFY OTP
 export const verifyOtp = async (req: Request, res: Response) => {
   try {
     const { email, otp } = req.body;
@@ -101,7 +100,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
   }
 };
 
-// 3. LOGIN (Existing)
+// 3. LOGIN
 export const login = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
@@ -142,5 +141,93 @@ export const googleLogin = async (req: Request, res: Response) => {
     res.json({ token, user: { id: user._id, email: user.email, role: user.role } });
   } catch (error) {
     res.status(400).json({ message: 'Google Auth Failed' });
+  }
+};
+
+// 5. FORGOT PASSWORD (NEW)
+export const forgotPassword = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Generate token
+    const resetToken = crypto.randomBytes(20).toString('hex');
+
+    // Hash token and save to DB
+    user.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+    user.resetPasswordExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    await user.save();
+
+    // Create Reset URL
+    // Ensure CLIENT_URL is set in .env (e.g., http://localhost:5173)
+    const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
+
+    const message = `
+      You have requested a password reset. 
+      Please click the link below to reset your password:
+      \n\n${resetUrl}\n\n
+      If you did not request this, please ignore this email.
+    `;
+
+    try {
+      await transporter.sendMail({
+        from: process.env.MAIL_USER,
+        to: user.email,
+        subject: 'SweetShop Password Reset',
+        text: message
+      });
+
+      res.status(200).json({ message: 'Email sent successfully' });
+    } catch (err) {
+      user.resetPasswordToken = undefined;
+      user.resetPasswordExpires = undefined;
+      await user.save();
+      console.error("Email send failed:", err);
+      return res.status(500).json({ message: 'Email could not be sent' });
+    }
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// 6. RESET PASSWORD (NEW)
+export const resetPassword = async (req: Request, res: Response) => {
+  try {
+    // Hash the token from URL to compare with DB
+    const resetPasswordToken = crypto.createHash('sha256').update(req.params.token).digest('hex');
+
+    // Find user with valid, non-expired token
+    const user = await User.findOne({
+      resetPasswordToken,
+      resetPasswordExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid or expired token' });
+    }
+
+    // Set new password
+    user.password = await bcrypt.hash(req.body.password, 10);
+    
+    // Clear reset fields
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+
+    await user.save();
+
+    // Generate new token so they are logged in immediately
+    const token = generateToken(user);
+    res.status(200).json({ token, user, message: 'Password updated successfully' });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
   }
 };

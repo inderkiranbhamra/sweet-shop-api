@@ -4,8 +4,10 @@ import { authenticate, requireAdmin } from '../middleware/authMiddleware';
 
 const router = Router();
 
-// Public routes (or protected for all users)
-router.get('/', authenticate, getSweets);
+// ✅ PUBLIC ROUTE: Guests can now see the sweets!
+router.get('/', getSweets); 
+
+// Protected routes (User must be logged in to buy)
 router.post('/:id/purchase', authenticate, purchaseSweet);
 
 // Admin only routes

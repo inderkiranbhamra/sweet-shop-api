@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import authRoutes from './routes/authRoutes';
 import sweetRoutes from './routes/sweetRoutes';
+import orderRoutes from './routes/orderRoutes';
 
 const app = express();
 
@@ -14,6 +15,7 @@ app.use(express.json());
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/sweets', sweetRoutes);
+app.use('/api/orders', orderRoutes); 
 
 // Health Check
 app.get('/', (req, res) => {

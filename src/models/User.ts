@@ -7,6 +7,9 @@ export interface IUser extends Document {
   role: 'ADMIN' | 'CUSTOMER';
   otp?: string;
   otpExpires?: Date;
+  // NEW: Fields for password reset
+  resetPasswordToken?: string;
+  resetPasswordExpires?: Date;
 }
 
 const UserSchema: Schema = new Schema({
@@ -15,7 +18,10 @@ const UserSchema: Schema = new Schema({
   googleId: { type: String },
   role: { type: String, enum: ['ADMIN', 'CUSTOMER'], default: 'CUSTOMER' },
   otp: { type: String },
-  otpExpires: { type: Date }
+  otpExpires: { type: Date },
+  // NEW: Schema definitions
+  resetPasswordToken: { type: String },
+  resetPasswordExpires: { type: Date }
 }, { timestamps: true });
 
 export default mongoose.model<IUser>('User', UserSchema);
